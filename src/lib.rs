@@ -6,19 +6,23 @@ type Weight = Rational32;
 // type PricePerWeigh = Rational32;
 
 fn compute_upper_bound(items: &Vec<(usize, Value, Weight)>, slack: Weight, value: Value) -> Value {
-    match (items.as_slice().split_first(), slack.to_integer(), value) {
-        (_, 0, v) => v,
-        (None, _, v) => v,
-        (Some(((_, v, w), tail)), _, _) => {
-            if slack >= *w {
-                compute_upper_bound(&Vec::from(tail), slack - w, value + v)
-            } else {
-                value + (v / w) * slack
-            }
+    if slack == Rational32::from(0) || items.len() == 0 {
+        return value;
+    }
+    let mut slack = slack;
+    let mut res = value;
+    for (_, v, w) in items.iter() {
+        if slack >= *w {
+            res += v;
+            slack -= w;
+        } else {
+            res += (v / w) * slack;
         }
     }
+    res
 }
 
+#[derive(Debug)]
 struct Node {
     items: Vec<usize>,
     value: Value,
