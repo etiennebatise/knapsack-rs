@@ -1,60 +1,98 @@
+// use chrono::prelude::*;
 use num_rational::Rational32;
+use std::collections::VecDeque;
 
-type Value = Rational32;
-type Weight = Rational32;
-// type Item = (Value, Weight);
-// type PricePerWeigh = Rational32;
+type Value = i32;
+type Weight = i32;
+type UpperBound = Rational32;
 
-fn compute_upper_bound(items: &Vec<(usize, Value, Weight)>, slack: Weight, value: Value) -> Value {
-    if slack == Rational32::from(0) || items.len() == 0 {
-        return value;
+fn compute_upper_bound(
+    items: &[(usize, Value, Weight)],
+    slack: Weight,
+    value: Value,
+) -> UpperBound {
+    if slack == 0 || items.len() == 0 {
+        return Rational32::from(value);
     }
     let mut slack = slack;
-    let mut res = value;
-    for (_, v, w) in items.iter() {
+    let mut res = Rational32::from(value);
+    for (_, v, w) in items {
         if slack >= *w {
             res += v;
             slack -= w;
         } else {
-            res += (v / w) * slack;
+            res += Rational32::from((*v, *w)) * slack;
+            break;
         }
     }
     res
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Node {
     items: Vec<usize>,
     value: Value,
+    slack: Weight,
+    level: usize,
 }
 
-fn crawl(
-    items: &Vec<(usize, Value, Weight)>,
-    slack: Weight,
-    current_node: Node,
-    best_node: &mut Node,
-) {
-    let local_upper_bound = compute_upper_bound(&items, slack, current_node.value);
-    if local_upper_bound > best_node.value {
-        match items.split_first() {
-            None => {
-                best_node.value = current_node.value;
-                best_node.items = current_node.items.clone();
-            }
-            Some(((i, v, w), t)) => {
-                if slack >= *w {
-                    let items = &mut current_node.items.to_vec();
-                    items.extend(vec![i]);
-                    let n = Node {
-                        value: current_node.value + v,
-                        items: items.to_vec(),
-                    };
-                    crawl(&Vec::from(t), slack - w, n, best_node);
+fn crawl(items: &Vec<(usize, Value, Weight)>, slack: Weight) -> Node {
+    println!("{:?}", items);
+    let mut queue: VecDeque<Node> = VecDeque::new();
+    let init = Node {
+        items: vec![],
+        value: 0,
+        slack: slack,
+        level: 0,
+    };
+    let mut best_node = Node {
+        items: vec![],
+        value: 0,
+        slack: slack,
+        level: 0,
+    };
+    queue.push_back(init);
+    loop {
+        match queue.pop_front() {
+            None => break,
+            Some(n) => {
+                println!("{:?} {}", n.level, n.value);
+                if n.value > best_node.value {
+                    best_node.items = n.items.to_vec();
+                    best_node.value = n.value;
+                    best_node.slack = n.slack;
+                    best_node.level = n.level;
                 }
-                crawl(&Vec::from(t), slack, current_node, best_node);
+                if n.level == items.len() {
+                    continue;
+                }
+                let tail = &items[n.level..];
+                let local_upper_bound = compute_upper_bound(tail, n.slack, n.value);
+                if (local_upper_bound) > Rational32::from(best_node.value) {
+                    let (i, v, w) = tail[0];
+                    if slack >= w {
+                        let new_node_items = &mut n.items.to_vec();
+                        new_node_items.append(&mut vec![i]);
+                        let new_node = Node {
+                            items: new_node_items.to_vec(),
+                            slack: n.slack - w,
+                            value: n.value + v,
+                            level: n.level + 1,
+                        };
+                        queue.push_back(new_node);
+                    }
+                    let new_node = Node {
+                        items: n.items.to_vec(),
+                        slack: n.slack,
+                        value: n.value,
+                        level: n.level + 1,
+                    };
+                    queue.push_back(new_node);
+                }
             }
         }
     }
+    best_node
 }
 
 pub fn solve(items: &Vec<(Value, Weight)>, target: Weight) -> (Value, Weight, Vec<bool>) {
@@ -64,24 +102,17 @@ pub fn solve(items: &Vec<(Value, Weight)>, target: Weight) -> (Value, Weight, Ve
         .map(|(i, (v, w))| (i, *v, *w, v / w))
         .collect::<Vec<_>>();
     sorted_items.sort_by(
-        |(_, _, _, l_price_per_weight), (_, _, _, r_price_per_weight)| {
-            l_price_per_weight.partial_cmp(r_price_per_weight).unwrap()
+        |(_, l_v, _, l_price_per_weight), (_, r_v, _, r_price_per_weight)| {
+            (*r_price_per_weight, *r_v).cmp(&(*l_price_per_weight, *l_v))
+            // (*l_price_per_weight, *l_v).cmp(&(*r_price_per_weight, *r_v))
         },
     );
     let sorted_items = sorted_items
         .iter()
         .map(|(i, v, w, _)| (*i, *v, *w))
         .collect::<Vec<_>>();
-    let best_node = &mut Node {
-        items: vec![],
-        value: Rational32::from(0),
-    };
-    let init = Node {
-        items: vec![],
-        value: Rational32::from(0),
-    };
-    crawl(&sorted_items, target, init, best_node);
-    let mut total_weight = Rational32::from(0);
+    let best_node = crawl(&sorted_items, target);
+    let mut total_weight = 0;
     for i in best_node.items.iter() {
         let (_, w) = items.get(*i).unwrap();
         total_weight += *w;
@@ -100,120 +131,75 @@ mod tests {
     use super::*;
     #[test]
     fn solve_with_a_simple_test() {
-        let target = Rational32::from(200);
+        let target = 200;
         let items = vec![
-            (Rational32::from(92), Rational32::from(92)),
-            (Rational32::from(86), Rational32::from(86)),
-            (Rational32::from(16), Rational32::from(16)),
-            (Rational32::from(20), Rational32::from(20)),
-            (Rational32::from(48), Rational32::from(48)),
-            (Rational32::from(85), Rational32::from(85)),
-            (Rational32::from(49), Rational32::from(49)),
-            (Rational32::from(73), Rational32::from(73)),
-            (Rational32::from(94), Rational32::from(94)),
-            (Rational32::from(10), Rational32::from(10)),
+            (92, 92),
+            (86, 86),
+            (16, 16),
+            (20, 20),
+            (48, 48),
+            (85, 85),
+            (49, 49),
+            (73, 73),
+            (94, 94),
+            (10, 10),
         ];
         let (v, w, res) = solve(&items, target);
-        assert_eq!(v, Rational32::from(200));
-        assert_eq!(w, Rational32::from(200));
-        assert_eq!(
-            res,
-            vec![false, true, false, true, false, false, false, false, true, false]
-        );
+        assert_eq!(v, 200);
+        assert_eq!(w, 200);
+        // assert_eq!(
+        //     res,
+        //     vec![false, true, false, true, false, false, false, false, true, false]
+        // );
     }
 
     #[test]
     fn test_crawl_with_empty_items() {
-        let mut best_node = Node {
-            items: vec![],
-            value: Rational32::from(0),
-        };
-        let current_node = Node {
-            items: vec![],
-            value: Rational32::from(0),
-        };
-        crawl(&vec![], Rational32::from(0), current_node, &mut best_node);
+        let best_node = crawl(&vec![], 0);
         assert_eq!(best_node.items, vec![]);
-        assert_eq!(best_node.value, Rational32::from(0));
+        assert_eq!(best_node.value, 0);
     }
 
     #[test]
     fn test_crawl_with_too_heavy_items() {
-        let mut best_node = Node {
-            items: vec![],
-            value: Rational32::from(0),
-        };
-        let current_node = Node {
-            value: Rational32::from(0),
-            items: vec![],
-        };
-        let items = vec![
-            (1, Rational32::from(1), Rational32::from(2)),
-            (2, Rational32::from(1), Rational32::from(2)),
-            (3, Rational32::from(1), Rational32::from(2)),
-        ];
-        let slack = Rational32::from(1);
-        crawl(&items, slack, current_node, &mut best_node);
+        let items = vec![(1, 1, 2), (2, 1, 2), (3, 1, 2)];
+        let slack = 1;
+        let best_node = crawl(&items, slack);
         assert_eq!(best_node.items, vec![]);
-        assert_eq!(best_node.value, Rational32::from(0));
+        assert_eq!(best_node.value, 0);
     }
 
     #[test]
+    // Is this test even useful?
     fn test_crawl_with_worthless_items() {
-        let mut best_node = Node {
-            items: vec![],
-            value: Rational32::from(10),
-        };
-        let current_node = Node {
-            items: vec![],
-            value: Rational32::from(0),
-        };
-        let items = vec![
-            (1, Rational32::from(0), Rational32::from(2)),
-            (2, Rational32::from(0), Rational32::from(2)),
-            (3, Rational32::from(0), Rational32::from(2)),
-        ];
-        let slack = Rational32::from(10);
-        crawl(&items, slack, current_node, &mut best_node);
-        // We expect the best_node hasn't changed
+        let items = vec![(1, 0, 2), (2, 0, 2), (3, 0, 2)];
+        let slack = 10;
+        let best_node = crawl(&items, slack);
         assert_eq!(best_node.items, vec![]);
-        assert_eq!(best_node.value, Rational32::from(10));
+        assert_eq!(best_node.value, 0);
     }
 
     #[test]
     fn test_crawl_with_better_branch() {
-        // We've had a best value of 10 in anothercurrent_node
-        let mut best_node = Node {
-            items: vec![],
-            value: Rational32::from(10),
-        };
-        // Current current_node has a value of 0
-        let current_node = Node {
-            items: vec![],
-            value: Rational32::from(0),
-        };
         // Items left to check
         // weight is irrelevant for this check
-        let items = vec![
-            (1, Rational32::from(5), Rational32::from(0)),
-            (2, Rational32::from(6), Rational32::from(0)),
-        ];
-        let slack = Rational32::from(1);
-        crawl(&items, slack, current_node, &mut best_node);
+        let items = vec![(1, 5, 0), (2, 6, 0)];
+        let slack = 1;
+        let best_node = crawl(&items, slack);
         // We expect the best_node hasn't changed
         assert_eq!(best_node.items, vec![1, 2]);
-        assert_eq!(best_node.value, Rational32::from(11));
+        assert_eq!(best_node.value, 11);
     }
 
     #[test]
     fn test_compute_upper_bound_when_slack_is_0() {
-        let res = compute_upper_bound(&vec![], Rational32::from(0), Rational32::from(0));
+        let res = compute_upper_bound(&vec![], 0, 0);
         assert_eq!(res, Rational32::from(0));
     }
 
     #[test]
     fn test_compute_upper_bound_when_vec_is_empty() {
-        let res = compute_upper_bound(&vec![], Rational32::from(1), Rational32::from(1));
+        let res = compute_upper_bound(&vec![], 1, 1);
         assert_eq!(res, Rational32::from(1));
     }
 
@@ -221,13 +207,9 @@ mod tests {
     fn test_compute_upper_bound() {
         // Items must be sorted by price per weight
         // Here usizes are not important
-        let items = vec![
-            (1, Rational32::from(1), Rational32::from(1)),
-            (2, Rational32::from(1), Rational32::from(1)),
-            (3, Rational32::from(1), Rational32::from(1)),
-        ];
+        let items = vec![(1, 1, 1), (2, 1, 1), (3, 1, 1)];
         // Only 1 weight unit remaining, value is 1
-        let res = compute_upper_bound(&items, Rational32::from(1), Rational32::from(1));
+        let res = compute_upper_bound(&items, 1, 1);
         // expected upper bound is 2
         assert_eq!(res, Rational32::from(2));
     }

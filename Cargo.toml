@@ -8,3 +8,13 @@ edition = "2018"
 
 [dependencies]
 num-rational = "0.3"
+chrono = "0.4"
+
+
+[lib]
+name = "knapsack"
+path = "src/lib.rs"
+
+[[bin]]
+name = "knapsack"
+path = "src/main.rs"
