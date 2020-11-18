@@ -56,7 +56,7 @@ fn crawl(items: &Vec<(usize, Value, Weight)>, slack: Weight) -> Node {
         match queue.pop_front() {
             None => break,
             Some(n) => {
-                println!("{:?} {}", n.level, n.value);
+                // println!("{:?} {}", n.level, n.value);
                 if n.value > best_node.value {
                     best_node.items = n.items.to_vec();
                     best_node.value = n.value;
@@ -68,9 +68,12 @@ fn crawl(items: &Vec<(usize, Value, Weight)>, slack: Weight) -> Node {
                 }
                 let tail = &items[n.level..];
                 let local_upper_bound = compute_upper_bound(tail, n.slack, n.value);
+                // println!("{:?}", n);
+                // println!("local bound {:?}", local_upper_bound);
+                // println!("current best node {:?}", best_node.value);
                 if (local_upper_bound) > Rational32::from(best_node.value) {
                     let (i, v, w) = tail[0];
-                    if slack >= w {
+                    if w <= n.slack {
                         let new_node_items = &mut n.items.to_vec();
                         new_node_items.append(&mut vec![i]);
                         let new_node = Node {
