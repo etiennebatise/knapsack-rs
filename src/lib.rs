@@ -1,4 +1,4 @@
-// use chrono::prelude::*;
+use chrono::prelude::*;
 use num_rational::Rational32;
 use std::collections::VecDeque;
 
@@ -29,24 +29,24 @@ fn compute_upper_bound(
 }
 
 #[derive(Debug, Clone)]
-struct Node {
-    items: Vec<usize>,
+struct Node<'a> {
+    items: &'a [usize],
     value: Value,
     slack: Weight,
     level: usize,
 }
 
-fn crawl(items: &Vec<(usize, Value, Weight)>, slack: Weight) -> Node {
+fn crawl(items: &Vec<(usize, Value, Weight)>, slack: Weight) -> (Vec<usize>, Value, Weight) {
     println!("{:?}", items);
     let mut queue: VecDeque<Node> = VecDeque::new();
     let init = Node {
-        items: vec![],
+        items: &[],
         value: 0,
         slack: slack,
         level: 0,
     };
     let mut best_node = Node {
-        items: vec![],
+        items: &[],
         value: 0,
         slack: slack,
         level: 0,
@@ -58,7 +58,7 @@ fn crawl(items: &Vec<(usize, Value, Weight)>, slack: Weight) -> Node {
             Some(n) => {
                 // println!("{:?} {}", n.level, n.value);
                 if n.value > best_node.value {
-                    best_node.items = n.items.to_vec();
+                    best_node.items = n.items;
                     best_node.value = n.value;
                     best_node.slack = n.slack;
                     best_node.level = n.level;
@@ -67,7 +67,10 @@ fn crawl(items: &Vec<(usize, Value, Weight)>, slack: Weight) -> Node {
                     continue;
                 }
                 let tail = &items[n.level..];
+                let before: DateTime<Utc> = Utc::now();
                 let local_upper_bound = compute_upper_bound(tail, n.slack, n.value);
+                let after: DateTime<Utc> = Utc::now();
+                println!("{:?} {:?} {:?}", before, after, after - before);
                 // println!("{:?}", n);
                 // println!("local bound {:?}", local_upper_bound);
                 // println!("current best node {:?}", best_node.value);
@@ -77,7 +80,7 @@ fn crawl(items: &Vec<(usize, Value, Weight)>, slack: Weight) -> Node {
                         let new_node_items = &mut n.items.to_vec();
                         new_node_items.append(&mut vec![i]);
                         let new_node = Node {
-                            items: new_node_items.to_vec(),
+                            items: new_node_items.as_slice(),
                             slack: n.slack - w,
                             value: n.value + v,
                             level: n.level + 1,
@@ -85,7 +88,7 @@ fn crawl(items: &Vec<(usize, Value, Weight)>, slack: Weight) -> Node {
                         queue.push_back(new_node);
                     }
                     let new_node = Node {
-                        items: n.items.to_vec(),
+                        items: n.items,
                         slack: n.slack,
                         value: n.value,
                         level: n.level + 1,
@@ -95,7 +98,7 @@ fn crawl(items: &Vec<(usize, Value, Weight)>, slack: Weight) -> Node {
             }
         }
     }
-    best_node
+    (best_node.items.to_vec(), best_node.value, best_node.slack)
 }
 
 pub fn solve(items: &Vec<(Value, Weight)>, target: Weight) -> (Value, Weight, Vec<bool>) {
@@ -114,19 +117,19 @@ pub fn solve(items: &Vec<(Value, Weight)>, target: Weight) -> (Value, Weight, Ve
         .iter()
         .map(|(i, v, w, _)| (*i, *v, *w))
         .collect::<Vec<_>>();
-    let best_node = crawl(&sorted_items, target);
+    let (best_node_items, value, _) = crawl(&sorted_items, target);
     let mut total_weight = 0;
-    for i in best_node.items.iter() {
+    for i in best_node_items.iter() {
         let (_, w) = items.get(*i).unwrap();
         total_weight += *w;
     }
     let res = items
         .iter()
         .enumerate()
-        .map(|(i, _)| best_node.items.contains(&i))
+        .map(|(i, _)| best_node_items.contains(&i))
         .collect::<Vec<_>>();
 
-    (best_node.value, total_weight, res)
+    (value, total_weight, res)
 }
 
 #[cfg(test)]
@@ -158,7 +161,8 @@ mod tests {
 
     #[test]
     fn test_crawl_with_empty_items() {
-        let best_node = crawl(&vec![], 0);
+        let items = vec![];
+        let best_node = crawl(&items, 0);
         assert_eq!(best_node.items, vec![]);
         assert_eq!(best_node.value, 0);
     }
