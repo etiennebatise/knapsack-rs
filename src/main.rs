@@ -26,6 +26,6 @@ fn main() {
     let path = args.get(1).unwrap();
     let (max, _, items) = parse_file(path.to_string()).unwrap();
     let items = items.iter().map(|i| (*i, *i)).collect::<Vec<_>>();
-    let (v, w, _r) = solve(&items, max);
-    println!("{} {}", v, w);
+    let (v, w, r) = solve(&items, max);
+    println!("{} {}\n{:?}", v, w, r);
 }

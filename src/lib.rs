@@ -5,7 +5,8 @@ use std::rc::{Rc, Weak};
 
 type Value = i32;
 type Weight = i32;
-type UpperBound = Rational32;
+// type UpperBound = Rational32;
+type UpperBound = i32;
 
 struct Item {
     index: usize,
@@ -15,16 +16,16 @@ struct Item {
 
 fn compute_upper_bound<T>(items: &[(T, Value, Weight)], slack: Weight, value: Value) -> UpperBound {
     if slack == 0 || items.len() == 0 {
-        return Rational32::from(value);
+        return value;
     }
     let mut slack = slack;
-    let mut res = Rational32::from(value);
+    let mut res = value;
     for (_, v, w) in items {
         if slack >= *w {
             res += v;
             slack -= w;
         } else {
-            res += Rational32::from((*v, *w)) * slack;
+            res += (*v / *w) * slack;
             break;
         }
     }
@@ -40,7 +41,7 @@ struct Node {
 }
 
 fn crawl(items: &Vec<(Rc<usize>, Value, Weight)>, slack: Weight) -> (Vec<usize>, Value, Weight) {
-    println!("{:?}", items);
+    // println!("{:?}", items);
     let mut queue: VecDeque<Node> = VecDeque::new();
     let init = Node {
         items: vec![],
@@ -54,16 +55,13 @@ fn crawl(items: &Vec<(Rc<usize>, Value, Weight)>, slack: Weight) -> (Vec<usize>,
         slack: slack,
         level: 0,
     };
-    let mut before: DateTime<Utc> = Utc::now();
-    let after: DateTime<Utc> = Utc::now();
     queue.push_back(init);
     loop {
         match queue.pop_front() {
             None => break,
             Some(n) => {
-                println!("{}", queue.len());
                 if n.value > best_node.value {
-                    println!("Best node : {:?} {}", n.level, n.value);
+                    // println!("Best node : {:?} {}", n.level, n.value);
                     best_node.items = n.items.to_vec();
                     best_node.value = n.value;
                     best_node.slack = n.slack;
@@ -74,11 +72,15 @@ fn crawl(items: &Vec<(Rc<usize>, Value, Weight)>, slack: Weight) -> (Vec<usize>,
                 }
                 let tail = &items[n.level..];
                 let local_upper_bound = compute_upper_bound(tail, n.slack, n.value);
-                // println!("{:?} {:?} {:?}", before, after, after - before);
-                // println!("{:?}", n);
-                // println!("local bound {:?}", local_upper_bound);
-                // println!("current best node {:?}", best_node.value);
-                if (local_upper_bound) > Rational32::from(best_node.value) {
+                if (local_upper_bound) > best_node.value {
+                    let new_node = Node {
+                        items: n.items.to_vec(),
+                        slack: n.slack,
+                        value: n.value,
+                        level: n.level + 1,
+                    };
+                    queue.push_front(new_node);
+
                     let (i, v, w) = &tail[0];
                     if *w <= n.slack {
                         let new_node_items = &mut n.items.to_vec();
@@ -89,15 +91,8 @@ fn crawl(items: &Vec<(Rc<usize>, Value, Weight)>, slack: Weight) -> (Vec<usize>,
                             value: n.value + v,
                             level: n.level + 1,
                         };
-                        queue.push_back(new_node);
+                        queue.push_front(new_node);
                     }
-                    let new_node = Node {
-                        items: n.items,
-                        slack: n.slack,
-                        value: n.value,
-                        level: n.level + 1,
-                    };
-                    queue.push_back(new_node);
                 }
             }
         }
