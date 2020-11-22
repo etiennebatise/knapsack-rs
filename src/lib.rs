@@ -1,15 +1,9 @@
 use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
 
-type Value = u32;
-type Weight = u32;
-type UpperBound = u32;
-
-struct Item {
-    index: usize,
-    value: Value,
-    weight: Weight,
-}
+type Value = usize;
+type Weight = usize;
+type UpperBound = usize;
 
 fn bound<T>(items: &[(T, Value, Weight)], slack: Weight, value: Value) -> UpperBound {
     if slack == 0 || items.len() == 0 {
@@ -38,7 +32,6 @@ struct Node {
 }
 
 fn crawl(items: &Vec<(Rc<usize>, Value, Weight)>, slack: Weight) -> (Vec<usize>, Value, Weight) {
-    let mut queue: VecDeque<Node> = VecDeque::new();
     let init = Node {
         items: vec![],
         profit: 0,
@@ -51,6 +44,7 @@ fn crawl(items: &Vec<(Rc<usize>, Value, Weight)>, slack: Weight) -> (Vec<usize>,
         slack: slack,
         level: 0,
     };
+    let mut queue: VecDeque<Node> = VecDeque::new();
     queue.push_back(init);
     loop {
         match queue.pop_front() {
@@ -102,11 +96,39 @@ fn crawl(items: &Vec<(Rc<usize>, Value, Weight)>, slack: Weight) -> (Vec<usize>,
     (resi, best_node.profit, best_node.slack)
 }
 
-pub fn solve(items: &Vec<(Value, Weight)>, target: Weight) -> (Value, Weight, Vec<bool>) {
+struct Foo {
+    foo: usize,
+    bar: usize,
+}
+
+pub trait Item {
+    fn value(&self) -> Value;
+    fn weight(&self) -> Weight;
+}
+
+impl Item for Foo {
+    fn value(&self) -> Value {
+        self.foo
+    }
+    fn weight(&self) -> Weight {
+        self.bar
+    }
+}
+
+impl Item for (usize, usize) {
+    fn value(&self) -> Value {
+        self.0
+    }
+    fn weight(&self) -> Weight {
+        self.1
+    }
+}
+
+pub fn solve(items: Vec<impl Item>, target: Weight) -> (Value, Weight, Vec<bool>) {
     let mut sorted_items = items
         .iter()
         .enumerate()
-        .map(|(i, (v, w))| (i, *v, *w, v / w))
+        .map(|(pos, i)| (pos, i.value(), i.weight(), i.value() / i.weight()))
         .collect::<Vec<_>>();
     sorted_items.sort_by(
         |(_, l_v, _, l_price_per_weight), (_, r_v, _, r_price_per_weight)| {
@@ -120,8 +142,8 @@ pub fn solve(items: &Vec<(Value, Weight)>, target: Weight) -> (Value, Weight, Ve
     let (best_node_items, value, _) = crawl(&sorted_items, target);
     let mut total_weight = 0;
     for i in best_node_items.iter() {
-        let (_, w) = items.get(*i).unwrap();
-        total_weight += *w;
+        let item = items.get(*i).unwrap();
+        total_weight += item.weight();
     }
     let res = items
         .iter()
@@ -138,7 +160,7 @@ mod tests {
     #[test]
     fn solve_with_a_simple_test() {
         let target = 200;
-        let items = vec![
+        let items: Vec<(usize, usize)> = vec![
             (92, 92),
             (86, 86),
             (16, 16),
@@ -150,7 +172,7 @@ mod tests {
             (94, 94),
             (10, 10),
         ];
-        let (v, w, res) = solve(&items, target);
+        let (v, w, res) = solve(items, target);
         assert_eq!(v, 200);
         assert_eq!(w, 200);
         assert_eq!(
