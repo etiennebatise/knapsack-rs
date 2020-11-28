@@ -31,6 +31,18 @@ struct Node {
     level: usize,
 }
 
+impl Node {
+    pub fn to_tuple(self) -> (Vec<usize>, Value, Weight) {
+        let mut items: Vec<usize> = vec![];
+        for i in self.items.iter() {
+            let y = &mut i.upgrade().unwrap();
+            let x = Rc::make_mut(y);
+            items.push(*x);
+        }
+        (items, self.profit, self.slack)
+    }
+}
+
 fn crawl(items: &Vec<(Rc<usize>, Value, Weight)>, slack: Weight) -> (Vec<usize>, Value, Weight) {
     let init = Node {
         items: vec![],
@@ -38,12 +50,7 @@ fn crawl(items: &Vec<(Rc<usize>, Value, Weight)>, slack: Weight) -> (Vec<usize>,
         slack: slack,
         level: 0,
     };
-    let mut best_node = Node {
-        items: vec![],
-        profit: 0,
-        slack: slack,
-        level: 0,
-    };
+    let mut best_node = init.clone();
     let mut queue: VecDeque<Node> = VecDeque::new();
     queue.push_back(init);
     loop {
@@ -86,33 +93,12 @@ fn crawl(items: &Vec<(Rc<usize>, Value, Weight)>, slack: Weight) -> (Vec<usize>,
             }
         }
     }
-    let mut resi: Vec<usize> = vec![];
-    for i in best_node.items.iter() {
-        let y = &mut i.upgrade().unwrap();
-        let x = Rc::make_mut(y);
-        resi.push(*x);
-    }
-
-    (resi, best_node.profit, best_node.slack)
-}
-
-struct Foo {
-    foo: usize,
-    bar: usize,
+    best_node.to_tuple()
 }
 
 pub trait Item {
     fn value(&self) -> Value;
     fn weight(&self) -> Weight;
-}
-
-impl Item for Foo {
-    fn value(&self) -> Value {
-        self.foo
-    }
-    fn weight(&self) -> Weight {
-        self.bar
-    }
 }
 
 impl Item for (usize, usize) {
@@ -124,7 +110,7 @@ impl Item for (usize, usize) {
     }
 }
 
-pub fn solve(items: Vec<impl Item>, target: Weight) -> (Value, Weight, Vec<bool>) {
+pub fn sort(items: &Vec<impl Item>) -> Vec<(Rc<usize>, Value, Weight)> {
     let mut sorted_items = items
         .iter()
         .enumerate()
@@ -139,7 +125,12 @@ pub fn solve(items: Vec<impl Item>, target: Weight) -> (Value, Weight, Vec<bool>
         .iter()
         .map(|(i, v, w, _)| (Rc::new(*i), *v, *w))
         .collect::<Vec<_>>();
-    let (best_node_items, value, _) = crawl(&sorted_items, target);
+    sorted_items
+}
+
+pub fn solve(items: &Vec<impl Item>, slack: Weight) -> (Value, Weight, Vec<bool>) {
+    let sorted_items = sort(items);
+    let (best_node_items, value, _) = crawl(&sorted_items, slack);
     let mut total_weight = 0;
     for i in best_node_items.iter() {
         let item = items.get(*i).unwrap();
@@ -172,7 +163,7 @@ mod tests {
             (94, 94),
             (10, 10),
         ];
-        let (v, w, res) = solve(items, target);
+        let (v, w, res) = solve(&items, target);
         assert_eq!(v, 200);
         assert_eq!(w, 200);
         assert_eq!(
@@ -210,12 +201,10 @@ mod tests {
 
     #[test]
     fn test_crawl_with_better_branch() {
-        // Items left to check
         // weight is irrelevant for this check
         let items = vec![(Rc::new(1), 5, 0), (Rc::new(2), 6, 0)];
         let slack = 1;
         let (i, v, _) = crawl(&items, slack);
-        // We expect the best_node hasn't changed
         assert_eq!(i, vec![1, 2]);
         assert_eq!(v, 11);
     }
